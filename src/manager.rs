@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use crate::types::{PluginCreate, PluginEntry, Plugins, Routes};
-use actix_web::web;
-use plugin_lib::Plugin;
+use actix_web::{web, HttpRequest};
+use log::error;
+use plugin_lib::{types::PluginMeta, Plugin};
 #[derive(Default, Debug)]
 pub struct PluginManager {
     plugins: Plugins,
@@ -21,10 +22,7 @@ impl PluginManager {
     pub fn load_all_plugins(&mut self) -> std::io::Result<()> {
         for entry in std::fs::read_dir(&self.plugin_dir)? {
             let path = entry?.path();
-            if path
-                .extension()
-                .map_or(false, |ext| ext == "so" || ext == "dll" || ext == "dylib")
-            {
+            if path.extension().map_or(false, |ext| ext == "zip") {
                 unsafe {
                     self.load_plugin(&path)?;
                 }
@@ -36,19 +34,47 @@ impl PluginManager {
         let routes = self.routes.read().unwrap();
         serde_json::to_string_pretty(&*routes).unwrap()
     }
-    // pub fn load_plugin(&self, name: String, plugin: Box<dyn Plugin>) {
-    //     let scope = plugin.scope();
-    //     let routes: Vec<String> = plugin
-    //         .register_routes()
-    //         .iter()
-    //         .map(|(path, _)| path.clone())
-    //         .collect();
+    pub fn get_plugins_meta(&self) -> Vec<PluginMeta> {
+        let plugins = self.plugins.read().unwrap();
+        let routes = self.routes.read().unwrap();
+        plugins
+            .values()
+            .map(|entry| {
+                let plugin = &entry.plugin;
+                let sig = plugin.signature();
 
-    //     self.routes.write().unwrap().insert(scope, routes);
-    //     self.plugins.write().unwrap().insert(name, plugin);
-    // }
+                PluginMeta {
+                    name: plugin.name().into(),
+                    version: plugin.version().into(),
+                    description: plugin.description().into(),
+                    scope: plugin.scope().clone(),
+                    signature: sig,
+                    routes: routes.get(&plugin.scope()).cloned().unwrap_or_default(),
+                    frontend: plugin.frontend_file(),
+                }
+            })
+            .collect()
+    }
     pub unsafe fn load_plugin(&mut self, path: &Path) -> std::io::Result<()> {
-        let library = libloading::Library::new(path).map_err(|e| {
+        let temp_dir = tempfile::tempdir()?;
+        let temp_path = temp_dir.path();
+        let file = std::fs::File::open(path)?;
+        let mut archive = zip::ZipArchive::new(file)?;
+        archive.extract(temp_path)?;
+
+        let lib_path = walkdir::WalkDir::new(temp_path)
+            .into_iter()
+            .filter_map(Result::ok)
+            .find(|e| {
+                e.path()
+                    .extension()
+                    .map_or(false, |ext| ext == "dylib" || ext == "so" || ext == "dll")
+            })
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "No lib file found"))?
+            .path()
+            .to_path_buf();
+
+        let library = libloading::Library::new(lib_path).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Failed to load library: {}", e),
@@ -64,17 +90,34 @@ impl PluginManager {
         let raw = creator();
         let plugin = Box::from_raw(raw);
         let name = plugin.name().to_string();
+        let plugin_dir = self.plugin_dir.join(&name);
+        if plugin_dir.exists() {
+            std::fs::remove_dir_all(&plugin_dir)?;
+        }
+        std::fs::rename(temp_path, &plugin_dir)?;
         let scope = plugin.scope();
         let routes: Vec<String> = plugin
             .register_routes()
             .iter()
             .map(|(path, _)| path.into())
             .collect();
-        self.routes.write().unwrap().insert(scope, routes);
+        self.routes
+            .write()
+            .unwrap()
+            .entry(scope.clone())
+            .and_modify(|_| {
+                error!("Duplicate scope: {}", scope);
+            })
+            .or_insert(routes);
+        // .insert(scope, routes);
         self.plugins
             .write()
             .unwrap()
-            .insert(name.clone(), PluginEntry { plugin, library });
+            .entry(name.clone())
+            .and_modify(|_| {
+                error!("Duplicate plugin: {}", name);
+            })
+            .or_insert(PluginEntry { plugin, library });
         Ok(())
     }
     pub fn configure_routes(&self, cfg: &mut web::ServiceConfig) {
@@ -86,6 +129,25 @@ impl PluginManager {
                     app.service(web::resource(&path).route(route_factory()));
                 }
             }));
+            // 註冊 /plugin/<插件名> 路由
+            if let Some(file_name) = entry.plugin.frontend_file() {
+                let plugin_name = entry.plugin.name().to_string();
+                let file_path = format!("/plugin/{}", plugin_name);
+                let plugin_dir = format!("plugins/{}", plugin_name);
+                cfg.service(web::resource(&file_path).to(move |_req: HttpRequest| {
+                    let plugin_dir = plugin_dir.clone();
+                    let file_name = file_name.clone();
+                    async move {
+                        let file_path = format!("{}/{}", plugin_dir, file_name);
+                        actix_files::NamedFile::open_async(&file_path)
+                            .await
+                            .map(|file| file.into_response(&_req))
+                            .unwrap_or_else(|_| {
+                                actix_web::HttpResponse::NotFound().body("File not found")
+                            })
+                    }
+                }));
+            }
         }
     }
     #[allow(unused)]
@@ -105,5 +167,7 @@ impl Drop for PluginManager {
     fn drop(&mut self) {
         let mut plugins = self.plugins.write().unwrap();
         plugins.clear();
+        let mut routes = self.routes.write().unwrap();
+        routes.clear();
     }
 }
