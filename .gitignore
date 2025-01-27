@@ -1,2 +1,4 @@
 /target
 .env
+__MACOSX
+.DS_Store
