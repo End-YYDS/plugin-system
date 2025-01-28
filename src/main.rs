@@ -1,7 +1,6 @@
 mod env_settings;
 mod manager;
 mod types;
-// use actix_files::Files;
 use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::{
     http::{header::HeaderName, Method},
@@ -18,9 +17,6 @@ async fn get_routes(plugin_manager: web::Data<PluginManager>) -> impl Responder 
 async fn list_plugins(manager: web::Data<PluginManager>) -> impl Responder {
     web::Json(manager.get_plugins_meta())
 }
-// fn create_file_service_scope() -> actix_web::Scope {
-//     web::scope("/files").service(Files::new("/", "./plugins").show_files_listing())
-// }
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
@@ -112,8 +108,6 @@ async fn main() -> std::io::Result<()> {
                     .route("/routes", web::get().to(get_routes))
                     .route("/plugins", web::get().to(list_plugins)),
             )
-        // .service(web::resource("/api/plugins").route(web::get().to(list_plugins)))
-        // .service(create_file_service_scope())
     })
     .bind(&target)?
     .run()

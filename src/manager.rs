@@ -4,11 +4,14 @@ use crate::types::{PluginCreate, PluginEntry, Plugins, Routes};
 use actix_web::{web, HttpRequest};
 use log::error;
 use plugin_lib::{types::PluginMeta, Plugin};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 #[derive(Default, Debug)]
 pub struct PluginManager {
     plugins: Plugins,
     routes: Routes,
     plugin_dir: PathBuf,
+    next_id: AtomicUsize,
 }
 
 impl PluginManager {
@@ -17,6 +20,7 @@ impl PluginManager {
             plugins: Plugins::default(),
             routes: Routes::default(),
             plugin_dir: plugin_dir.as_ref().to_path_buf(),
+            next_id: AtomicUsize::new(0),
         }
     }
     pub fn load_all_plugins(&mut self) -> std::io::Result<()> {
@@ -42,8 +46,9 @@ impl PluginManager {
             .map(|entry| {
                 let plugin = &entry.plugin;
                 let sig = plugin.signature();
-
+                let id = self.next_id.fetch_add(1, Ordering::SeqCst);
                 PluginMeta {
+                    id,
                     name: plugin.name().into(),
                     version: plugin.version().into(),
                     description: plugin.description().into(),
