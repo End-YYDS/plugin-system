@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use crate::types::{PluginCreate, PluginEntry, Plugins, Routes};
 use actix_web::{web, HttpRequest};
-use log::error;
 use plugin_lib::{types::PluginMeta, Plugin};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -46,9 +45,9 @@ impl PluginManager {
             .map(|entry| {
                 let plugin = &entry.plugin;
                 let sig = plugin.signature();
-                let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+
                 PluginMeta {
-                    id,
+                    id: entry.id,
                     name: plugin.name().into(),
                     version: plugin.version().into(),
                     description: plugin.description().into(),
@@ -106,23 +105,28 @@ impl PluginManager {
             .iter()
             .map(|(path, _)| path.into())
             .collect();
-        self.routes
-            .write()
-            .unwrap()
-            .entry(scope.clone())
-            .and_modify(|_| {
-                error!("Duplicate scope: {}", scope);
-            })
-            .or_insert(routes);
-        // .insert(scope, routes);
-        self.plugins
-            .write()
-            .unwrap()
-            .entry(name.clone())
-            .and_modify(|_| {
-                error!("Duplicate plugin: {}", name);
-            })
-            .or_insert(PluginEntry { plugin, library });
+        if self.routes.write().unwrap().contains_key(&scope) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("Duplicate scope: {}", scope),
+            ));
+        }
+        self.routes.write().unwrap().insert(scope, routes);
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        if self.plugins.write().unwrap().contains_key(&name) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("Duplicate plugin: {}", name),
+            ));
+        }
+        self.plugins.write().unwrap().insert(
+            name,
+            PluginEntry {
+                plugin,
+                library,
+                id,
+            },
+        );
         Ok(())
     }
     pub fn configure_routes(&self, cfg: &mut web::ServiceConfig) {

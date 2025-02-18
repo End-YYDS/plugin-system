@@ -9,6 +9,7 @@ use plugin_lib::{
 pub struct PluginEntry {
     pub plugin: Box<dyn Plugin>,
     pub library: libloading::Library,
+    pub id: usize,
 }
 pub(crate) type Plugins = RwLock<HashMap<String, PluginEntry>>;
 pub(crate) type Routes = RwLock<HashMap<Scope, Provides>>;
