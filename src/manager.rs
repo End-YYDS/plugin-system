@@ -25,7 +25,7 @@ impl PluginManager {
     pub fn load_all_plugins(&mut self) -> std::io::Result<()> {
         for entry in std::fs::read_dir(&self.plugin_dir)? {
             let path = entry?.path();
-            if path.extension().map_or(false, |ext| ext == "zip") {
+            if path.extension().is_some_and(|ext| ext == "zip") {
                 unsafe {
                     self.load_plugin(&path)?;
                 }
@@ -72,7 +72,7 @@ impl PluginManager {
             .find(|e| {
                 e.path()
                     .extension()
-                    .map_or(false, |ext| ext == "dylib" || ext == "so" || ext == "dll")
+                    .is_some_and(|ext| ext == "dylib" || ext == "so" || ext == "dll")
             })
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "No lib file found"))?
             .path()
