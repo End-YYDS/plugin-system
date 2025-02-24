@@ -65,8 +65,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         let origins_clone = origins.clone();
         let governor = GovernorConfigBuilder::default()
-            .seconds_per_request(10) // 每秒允許10個請求
-            .burst_size(5) // 允許額外5個請求的突發
+            .seconds_per_request(10) 
+            .burst_size(5) 
             .finish()
             .unwrap();
         let cors = actix_cors::Cors::default()
@@ -99,7 +99,7 @@ async fn main() -> std::io::Result<()> {
                     ))
                     .add(("Cross-Origin-Embedder-Policy", "require-corp"))
                     .add(("Cross-Origin-Opener-Policy", "same-origin"))
-                    .add(("Cross-Origin-Resource-Policy", "same-origin")),
+                    .add(("Cross-Origin-Resource-Policy", "same-site")),
             )
             .app_data(plugin_manager.clone())
             .service(

@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::types::{PluginCreate, PluginEntry, Plugins, Routes};
-use actix_web::{web, HttpRequest};
+// use actix_web::{web, HttpRequest};
+use actix_web::web;
 use plugin_lib::{types::PluginMeta, Plugin};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -139,23 +140,28 @@ impl PluginManager {
                 }
             }));
             // 註冊 /plugin/<插件名> 路由
-            if let Some(file_name) = entry.plugin.frontend_file() {
+            // if let Some(file_name) = entry.plugin.frontend_file() {
+            if entry.plugin.frontend_file().is_some() {
+                // let plugin_name = entry.plugin.name().to_string();
+                // let file_path = format!("/plugin/{}", plugin_name);
+                // let plugin_dir = format!("plugins/{}", plugin_name);
+                // cfg.service(web::resource(&file_path).to(move |_req: HttpRequest| {
+                //     let plugin_dir = plugin_dir.clone();
+                //     let file_name = file_name.clone();
+                //     async move {
+                //         let file_path = format!("{}/frontend/assets/{}", plugin_dir, file_name);
+                //         actix_files::NamedFile::open_async(&file_path)
+                //             .await
+                //             .map(|file| file.into_response(&_req))
+                //             .unwrap_or_else(|_| {
+                //                 actix_web::HttpResponse::NotFound().body("File not found")
+                //             })
+                //     }
+                // }));
                 let plugin_name = entry.plugin.name().to_string();
-                let file_path = format!("/plugin/{}", plugin_name);
-                let plugin_dir = format!("plugins/{}", plugin_name);
-                cfg.service(web::resource(&file_path).to(move |_req: HttpRequest| {
-                    let plugin_dir = plugin_dir.clone();
-                    let file_name = file_name.clone();
-                    async move {
-                        let file_path = format!("{}/{}", plugin_dir, file_name);
-                        actix_files::NamedFile::open_async(&file_path)
-                            .await
-                            .map(|file| file.into_response(&_req))
-                            .unwrap_or_else(|_| {
-                                actix_web::HttpResponse::NotFound().body("File not found")
-                            })
-                    }
-                }));
+                let route_path = format!("/plugin/{}", plugin_name);
+                let assets_path = format!("plugins/{}/frontend/assets", plugin_name);
+                cfg.service(actix_files::Files::new(&route_path, assets_path));
             }
         }
     }
