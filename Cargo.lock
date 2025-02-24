@@ -1424,6 +1424,7 @@ dependencies = [
 [[package]]
 name = "plugin_lib"
 version = "0.1.0"
+source = "git+https://github.com/End-YYDS/plugin_lib#495e227ee7e9fb63dad3039d531f328bbf3f262b"
 dependencies = [
  "actix-web",
  "serde",
