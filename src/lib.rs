@@ -21,7 +21,6 @@ async fn list_plugins(manager: web::Data<PluginManager>) -> impl Responder {
 }
 
 pub async fn plugin_system_rest_server_handle() -> std::io::Result<Server> {
-    dotenv::dotenv().ok();
     let domains = get_json_array("TRUSTED_DOMAINS");
     let origins = get_json_array("ALLOWED_ORIGINS");
     let allow_method = get_json_array("ALLOWED_METHODS")
